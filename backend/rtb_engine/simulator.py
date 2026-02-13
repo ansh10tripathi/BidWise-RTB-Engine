@@ -31,14 +31,31 @@ def run_simulation(initial_budget=10000):
 
     for i in range(len(df)):
 
-        expected_value = ctr_probs[i] + conversion_weight * cvr_probs[i]
+        ctr = ctr_probs[i]
+        cvr = cvr_probs[i]
 
-        budget_factor = budget_manager.get_budget_factor()
+        # Value of impression
+        value = ctr_probs[i] + conversion_weight * cvr_probs[i]
 
-        bid = expected_value * base_bid * budget_factor
-
+        # Make bid proportional to expected ROI vs market
         market_price = df.iloc[i]["market_price"]
 
+        roi_factor = value / (market_price + 1e-6)
+
+        scaled_value = roi_factor * 1000
+
+        budget_factor = budget_manager.get_budget_factor()
+        bid = scaled_value * budget_factor
+
+
+        # If strong predicted value → stay competitive
+        if value > 0.02:
+            bid = max(bid, market_price * 0.8)
+
+        # Avoid extreme overbidding
+        bid = min(bid, market_price * 1.5)
+
+        # Win auction
         if bid >= market_price and budget_manager.can_bid(market_price):
             budget_manager.deduct(market_price)
 
