@@ -209,6 +209,3 @@ This project demonstrates:
 
 Developed as part of a Hackathon RTB Optimization Challenge.
 
----
-
-⭐ If you found this interesting, feel free to star the repository.
