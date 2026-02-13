@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+
+# Model files (optional if large)
+# backend/models/*.pkl
+
+# Dataset (optional if large)
+# backend/data/*.csv
+
+# Node
+node_modules/
+
+# Environment files
+.env
+
+# OS
+.DS_Store
+Thumbs.db

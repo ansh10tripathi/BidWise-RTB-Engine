@@ -1,0 +1,61 @@
+import pandas as pd
+from rtb_engine.predicator import Predictor
+from rtb_engine.budget_manager import BudgetManager
+from rtb_engine.strategy import BiddingStrategy
+
+def run_simulation(initial_budget=10000):
+    df = pd.read_csv("data/train.csv")
+
+    predictor = Predictor()
+    budget_manager = BudgetManager(initial_budget)
+
+    # Prepare features once
+    feature_columns = [
+        "campaign_id",
+        "hour",
+        "device_type",
+        "floor_price",
+        "market_price"
+    ]
+
+    X = df[feature_columns]
+
+    # Vectorized prediction (FAST)
+    ctr_probs = predictor.ctr_model.predict_proba(X)[:, 1]
+    cvr_probs = predictor.cvr_model.predict_proba(X)[:, 1]
+
+    total_clicks = 0
+    total_conversions = 0
+    conversion_weight = 5
+    base_bid = 10
+
+    for i in range(len(df)):
+
+        expected_value = ctr_probs[i] + conversion_weight * cvr_probs[i]
+
+        budget_factor = budget_manager.get_budget_factor()
+
+        bid = expected_value * base_bid * budget_factor
+
+        market_price = df.iloc[i]["market_price"]
+
+        if bid >= market_price and budget_manager.can_bid(market_price):
+            budget_manager.deduct(market_price)
+
+            if df.iloc[i]["click"] == 1:
+                total_clicks += 1
+
+            if df.iloc[i]["conversion"] == 1:
+                total_conversions += 1
+
+        if budget_manager.remaining_budget <= 0:
+            break
+
+    final_score = total_clicks + conversion_weight * total_conversions
+
+    return {
+        "clicks": total_clicks,
+        "conversions": total_conversions,
+        "score": final_score,
+        "remaining_budget": budget_manager.remaining_budget
+    }
