@@ -59,3 +59,38 @@ def run_simulation(initial_budget=10000):
         "score": final_score,
         "remaining_budget": budget_manager.remaining_budget
     }
+
+
+def run_baseline(initial_budget=10000, fixed_bid=5):
+    df = pd.read_csv("data/train.csv")
+
+    budget_manager = BudgetManager(initial_budget)
+
+    total_clicks = 0
+    total_conversions = 0
+    conversion_weight = 5
+
+    for i in range(len(df)):
+
+        market_price = df.iloc[i]["market_price"]
+
+        if fixed_bid >= market_price and budget_manager.can_bid(market_price):
+            budget_manager.deduct(market_price)
+
+            if df.iloc[i]["click"] == 1:
+                total_clicks += 1
+
+            if df.iloc[i]["conversion"] == 1:
+                total_conversions += 1
+
+        if budget_manager.remaining_budget <= 0:
+            break
+
+    final_score = total_clicks + conversion_weight * total_conversions
+
+    return {
+        "clicks": total_clicks,
+        "conversions": total_conversions,
+        "score": final_score,
+        "remaining_budget": budget_manager.remaining_budget
+    }
