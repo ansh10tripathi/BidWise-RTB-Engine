@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
 import "./globals.css";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "BidWise RTB",
-  description: "Real-Time Bidding DSP Optimization Dashboard",
+  title: "BidWise RTB Engine",
+  description: "Real-Time Bidding Optimization Dashboard",
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased bg-white text-black dark:bg-slate-900 dark:text-white transition-colors duration-300">
+      <body className="min-h-screen bg-slate-900 text-white antialiased">
         {children}
       </body>
     </html>
