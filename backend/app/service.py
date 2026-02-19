@@ -13,8 +13,13 @@ from .models import (
     SimulationResponse,
 )
 
+from rtb_engine.campaign_simulator import run_campaign_simulation
+
 # In-memory storage
 campaigns_db: Dict[str, Campaign] = {}
+
+# Cache for simulation results
+simulation_cache: Dict[str, dict] = {}
 
 
 class CampaignService:
@@ -49,46 +54,74 @@ class CampaignService:
 
     @staticmethod
     def get_metrics(campaign_id: str) -> Metrics:
-        return Metrics(
-            total_impressions=38450,
-            total_clicks=1580,
-            total_conversions=142,
-            total_spent=9920.80,
-            remaining_budget=79.20,
-            ctr=4.11,
-            cvr=8.99,
-            score=1722,
-            avg_cpc=6.28,
-        )
+        campaign = campaigns_db.get(campaign_id)
+        if not campaign:
+            return None
+        
+        # Check cache first
+        if campaign_id not in simulation_cache:
+            result = run_campaign_simulation(
+                initial_budget=campaign.total_budget,
+                base_bid=campaign.base_bid,
+                strategy=campaign.strategy,
+                conversion_weight=campaign.conversion_weight,
+                device_targeting=campaign.device_targeting,
+                active_hours=campaign.active_hours
+            )
+            simulation_cache[campaign_id] = result
+        
+        metrics_data = simulation_cache[campaign_id]["metrics"]
+        return Metrics(**metrics_data)
 
     @staticmethod
     def get_analytics(campaign_id: str) -> Analytics:
+        campaign = campaigns_db.get(campaign_id)
+        if not campaign:
+            return None
+        
+        # Check cache first
+        if campaign_id not in simulation_cache:
+            result = run_campaign_simulation(
+                initial_budget=campaign.total_budget,
+                base_bid=campaign.base_bid,
+                strategy=campaign.strategy,
+                conversion_weight=campaign.conversion_weight,
+                device_targeting=campaign.device_targeting,
+                active_hours=campaign.active_hours
+            )
+            simulation_cache[campaign_id] = result
+        
+        analytics_data = simulation_cache[campaign_id]["analytics"]
+        
         return Analytics(
-            hourly_performance=[
-                HourlyPerformance(hour=0, clicks=42, conversions=3, ctr=3.28),
-                HourlyPerformance(hour=6, clicks=55, conversions=5, ctr=3.79),
-                HourlyPerformance(hour=10, clicks=78, conversions=8, ctr=4.22),
-                HourlyPerformance(hour=14, clicks=92, conversions=10, ctr=4.42),
-                HourlyPerformance(hour=18, clicks=128, conversions=15, ctr=5.08),
-                HourlyPerformance(hour=20, clicks=148, conversions=18, ctr=5.32),
-                HourlyPerformance(hour=22, clicks=138, conversions=14, ctr=5.21),
-            ],
-            device_performance={
-                "mobile": DevicePerformance(clicks=890, conversions=85, ctr=4.52, cvr=9.55),
-                "desktop": DevicePerformance(clicks=690, conversions=57, ctr=3.58, cvr=8.26),
-            },
-            feature_importance=[
-                FeatureImportance(feature="Hour", importance=0.35),
-                FeatureImportance(feature="Campaign", importance=0.28),
-                FeatureImportance(feature="Device", importance=0.22),
-                FeatureImportance(feature="Floor Price", importance=0.15),
-            ],
+            hourly_performance=[HourlyPerformance(**hp) for hp in analytics_data["hourly_performance"]],
+            device_performance={k: DevicePerformance(**v) for k, v in analytics_data["device_performance"].items()},
+            feature_importance=[FeatureImportance(**fi) for fi in analytics_data["feature_importance"]]
         )
 
     @staticmethod
     def run_simulation(campaign_id: str, strategy: str) -> SimulationResponse:
+        campaign = campaigns_db.get(campaign_id)
+        if not campaign:
+            return None
+        
+        # Clear cache to force re-simulation
+        if campaign_id in simulation_cache:
+            del simulation_cache[campaign_id]
+        
+        # Update strategy temporarily for this simulation
+        original_strategy = campaign.strategy
+        campaign.strategy = strategy
+        
         metrics = CampaignService.get_metrics(campaign_id)
-
+        
+        # Restore original strategy
+        campaign.strategy = original_strategy
+        
+        # Clear cache again
+        if campaign_id in simulation_cache:
+            del simulation_cache[campaign_id]
+        
         return SimulationResponse(
             strategy=strategy,
             metrics=metrics,
@@ -100,5 +133,17 @@ class CampaignService:
         """Delete a campaign by ID. Returns True if deleted, False if not found."""
         if campaign_id in campaigns_db:
             del campaigns_db[campaign_id]
+            # Clear cache
+            if campaign_id in simulation_cache:
+                del simulation_cache[campaign_id]
             return True
         return False
+    
+    @staticmethod
+    def clear_cache(campaign_id: str = None):
+        """Clear simulation cache for a specific campaign or all campaigns."""
+        if campaign_id:
+            if campaign_id in simulation_cache:
+                del simulation_cache[campaign_id]
+        else:
+            simulation_cache.clear()

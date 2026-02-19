@@ -94,6 +94,23 @@ async def run_campaign_simulation(campaign_id: str, request: SimulationRequest):
     return CampaignService.run_simulation(campaign_id, request.strategy)
 
 
+@app.post("/campaigns/{campaign_id}/clear-cache", status_code=204)
+async def clear_campaign_cache(campaign_id: str):
+    """Clear simulation cache for a campaign to force re-computation."""
+    campaign = CampaignService.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    CampaignService.clear_cache(campaign_id)
+    return None
+
+
+@app.post("/clear-all-cache", status_code=204)
+async def clear_all_cache():
+    """Clear all simulation caches. Use after dataset changes."""
+    CampaignService.clear_cache()
+    return None
+
+
 # ==============================
 # ENGINE ROUTES (NO CONFLICT NOW)
 # ==============================
