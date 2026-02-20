@@ -3,30 +3,52 @@ interface PerformanceBannerProps {
 }
 
 export default function PerformanceBanner({ improvement }: PerformanceBannerProps) {
+
   const isPositive = improvement > 0
-  const bgColor = isPositive ? 'from-green-600/20 to-emerald-600/20' : 'from-red-600/20 to-rose-600/20'
-  const borderColor = isPositive ? 'border-green-500/30' : 'border-red-500/30'
-  const textColor = isPositive ? 'text-green-400' : 'text-red-400'
-  const iconColor = isPositive ? 'text-green-500' : 'text-red-500'
-  const message = isPositive ? 'Score Increased' : 'Score Decreased'
-  const icon = isPositive ? '📈' : '📉'
+  const isNegative = improvement < 0
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-r ${bgColor} backdrop-blur-xl border ${borderColor} p-8 hover:scale-105 transition-all duration-300`}>
-      <div className="absolute inset-0 bg-gradient-to-r from-slate-800/10 to-slate-900/10" />
-      <div className="relative flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-white mb-2">{message}</h2>
-          <p className="text-slate-300">Performance vs Baseline Strategy</p>
-        </div>
-        <div className="text-right">
-          <div className="flex items-center gap-3">
-            <span className="text-4xl">{icon}</span>
-            <div className={`text-4xl font-bold ${textColor}`}>
-              {improvement > 0 ? '+' : ''}{improvement.toFixed(1)}%
-            </div>
-          </div>
-        </div>
+    <div
+      className={`rounded-2xl border backdrop-blur-xl p-8 flex justify-between items-center transition-all duration-300
+        ${
+          isPositive
+            ? "border-emerald-500/40 bg-emerald-500/5"
+            : isNegative
+            ? "border-rose-500/40 bg-rose-500/5"
+            : "border-slate-600/40 bg-slate-800/40"
+        }
+      `}
+    >
+      
+      {/* Left Side */}
+      <div>
+        <h2 className="text-2xl font-bold text-white">
+          {isPositive
+            ? "Score Increased"
+            : isNegative
+            ? "Score Decreased"
+            : "No Change"}
+        </h2>
+
+        <p className="text-slate-400 mt-1">
+          Performance vs Baseline Strategy
+        </p>
+      </div>
+
+      {/* Right Side */}
+      <div
+        className={`text-4xl md:text-5xl font-extrabold transition-all duration-300
+          ${
+            isPositive
+              ? "text-emerald-400 drop-shadow-[0_0_12px_rgba(16,185,129,0.7)]"
+              : isNegative
+              ? "text-rose-400 drop-shadow-[0_0_12px_rgba(244,63,94,0.7)]"
+              : "text-slate-400"
+          }
+        `}
+      >
+        {isPositive && "+"}
+        {improvement.toFixed(1)}%
       </div>
     </div>
   )

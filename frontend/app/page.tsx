@@ -44,9 +44,35 @@ interface ConfidenceData {
   avg_cvr_confidence: number
 }
 
+interface Campaign {
+  id: string
+  campaign_name: string
+  total_budget: number
+  base_bid: number
+  strategy: string
+  conversion_weight: number
+  device_targeting: string
+  active_hours: number[]
+  status: string
+}
+
+interface Metrics {
+  total_impressions: number
+  total_clicks: number
+  total_conversions: number
+  total_spent: number
+  remaining_budget: number
+  ctr: number
+  cvr: number
+  score: number
+  avg_cpc: number
+}
+
 export default function Dashboard() {
-  const [baseline, setBaseline] = useState<RTBData | null>(null)
-  const [optimized, setOptimized] = useState<RTBData | null>(null)
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
+  const [campaignMetrics, setCampaignMetrics] = useState<Metrics | null>(null)
+  const [baselineMetrics, setBaselineMetrics] = useState<Metrics | null>(null)
   const [eda, setEda] = useState<EDAData | null>(null)
   const [hourly, setHourly] = useState<HourlyData[]>([])
   const [histogram, setHistogram] = useState<HistogramData[]>([])
@@ -56,13 +82,40 @@ export default function Dashboard() {
   const [apiStatus, setApiStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [error, setError] = useState<string | null>(null)
 
+  // Fetch campaigns on mount
   useEffect(() => {
+    const fetchCampaigns = async () => {
+      try {
+        const res = await fetch('http://127.0.0.1:8000/campaigns')
+        if (res.ok) {
+          const data = await res.json()
+          setCampaigns(data)
+          if (data.length > 0) {
+            setSelectedCampaign(data[0])
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch campaigns:', error)
+      }
+    }
+    fetchCampaigns()
+  }, [])
+
+  // Fetch data when campaign changes
+  useEffect(() => {
+    if (!selectedCampaign) {
+      setLoading(false)
+      return
+    }
+
     const fetchData = async () => {
       try {
+        setLoading(true)
         setError(null)
-        const [baselineRes, optimizedRes, edaRes, hourlyRes, histogramRes, featureRes, confidenceRes] = await Promise.all([
-          fetch('http://127.0.0.1:8000/baseline'),
-          fetch('http://127.0.0.1:8000/optimized'),
+        
+        // Fetch campaign metrics and baseline comparison
+        const [metricsRes, edaRes, hourlyRes, histogramRes, featureRes, confidenceRes] = await Promise.all([
+          fetch(`http://127.0.0.1:8000/campaigns/${selectedCampaign.id}/metrics`),
           fetch('http://127.0.0.1:8000/eda'),
           fetch('http://127.0.0.1:8000/analytics/hourly'),
           fetch('http://127.0.0.1:8000/analytics/market-price'),
@@ -70,12 +123,35 @@ export default function Dashboard() {
           fetch('http://127.0.0.1:8000/analytics/confidence')
         ])
         
-        if (!baselineRes.ok || !optimizedRes.ok || !edaRes.ok) {
-          throw new Error('API request failed')
+        if (!metricsRes.ok) {
+          throw new Error('Failed to fetch campaign metrics')
         }
         
-        setBaseline(await baselineRes.json())
-        setOptimized(await optimizedRes.json())
+        const metrics = await metricsRes.json()
+        setCampaignMetrics(metrics)
+        
+        // Fetch baseline comparison if campaign is optimized
+        if (selectedCampaign.strategy === 'optimized') {
+          const baselineRes = await fetch('http://127.0.0.1:8000/baseline')
+          if (baselineRes.ok) {
+            const baselineData = await baselineRes.json()
+            // Convert baseline format to metrics format
+            setBaselineMetrics({
+              total_impressions: 0,
+              total_clicks: baselineData.clicks,
+              total_conversions: baselineData.conversions,
+              total_spent: 0,
+              remaining_budget: baselineData.remaining_budget,
+              ctr: 0,
+              cvr: 0,
+              score: baselineData.score,
+              avg_cpc: 0
+            })
+          }
+        } else {
+          setBaselineMetrics(null)
+        }
+        
         setEda(await edaRes.json())
         setHourly(await hourlyRes.json())
         setHistogram(await histogramRes.json())
@@ -92,28 +168,31 @@ export default function Dashboard() {
     }
 
     fetchData()
-  }, [])
+  }, [selectedCampaign])
 
-  // Calculate KPIs
-  const kpiData: KPIData | null = baseline && optimized ? {
-    clickDifference: optimized.clicks - baseline.clicks,
-    conversionDifference: optimized.conversions - baseline.conversions,
-    scoreDifference: optimized.score - baseline.score,
-    budgetEfficiency: ((100000 - optimized.remaining_budget) / (100000 - baseline.remaining_budget)) * 100
+  // Calculate dynamic KPIs
+  const kpiData: KPIData | null = campaignMetrics && baselineMetrics ? {
+    clickDifference: campaignMetrics.total_clicks - baselineMetrics.total_clicks,
+    conversionDifference: campaignMetrics.total_conversions - baselineMetrics.total_conversions,
+    scoreDifference: campaignMetrics.score - baselineMetrics.score,
+    budgetEfficiency: baselineMetrics.total_spent > 0 
+      ? (campaignMetrics.total_spent / baselineMetrics.total_spent) * 100 
+      : 100
   } : null
 
-  const improvement = baseline && optimized 
-    ? ((optimized.score - baseline.score) / baseline.score) * 100 
+  // Calculate dynamic improvement percentage
+  const improvement = campaignMetrics && baselineMetrics && baselineMetrics.score > 0
+    ? ((campaignMetrics.score - baselineMetrics.score) / baselineMetrics.score) * 100 
     : 0
 
-  const chartData: ChartData[] = baseline && optimized ? [
-    { name: 'Baseline', clicks: baseline.clicks, score: baseline.score },
-    { name: 'Optimized', clicks: optimized.clicks, score: optimized.score }
+  const chartData: ChartData[] = campaignMetrics && baselineMetrics ? [
+    { name: 'Baseline', clicks: baselineMetrics.total_clicks, score: baselineMetrics.score },
+    { name: 'Optimized', clicks: campaignMetrics.total_clicks, score: campaignMetrics.score }
   ] : []
 
-  const budgetData: BudgetData[] = optimized ? [
-    { name: 'Used', value: 100000 - optimized.remaining_budget },
-    { name: 'Remaining', value: optimized.remaining_budget }
+  const budgetData: BudgetData[] = campaignMetrics && selectedCampaign ? [
+    { name: 'Used', value: campaignMetrics.total_spent },
+    { name: 'Remaining', value: campaignMetrics.remaining_budget }
   ] : []
 
   if (loading) {
@@ -138,20 +217,48 @@ export default function Dashboard() {
     )
   }
 
+  if (!selectedCampaign) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">📊</div>
+          <h2 className="text-2xl font-bold text-white mb-2">No Campaigns Found</h2>
+          <p className="text-slate-400">Create a campaign to get started</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-slate-900 p-8">
+    <div className="min-h-screen bg-slate-900 p-10">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex justify-between items-center mb-12 pb-8 border-b border-white/20">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">BidWise RTB Engine</h1>
-            <p className="text-slate-400">Enterprise Analytics Dashboard</p>
+            <h1 className="text-5xl font-extrabold text-white mb-3 tracking-tight">BidWise RTB Engine</h1>
+            <p className="text-slate-400 text-lg">Campaign: {selectedCampaign.campaign_name}</p>
           </div>
           <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
+            {campaigns.length > 1 && (
+              <select
+                value={selectedCampaign.id}
+                onChange={(e) => {
+                  const campaign = campaigns.find(c => c.id === e.target.value)
+                  if (campaign) setSelectedCampaign(campaign)
+                }}
+                className="px-4 py-3 bg-slate-800 text-white rounded-xl border border-white/20 focus:outline-none focus:border-cyan-500 transition-all"
+              >
+                {campaigns.map(campaign => (
+                  <option key={campaign.id} value={campaign.id}>
+                    {campaign.campaign_name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm border-2 ${
               apiStatus === 'connected' 
-                ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                ? 'bg-green-500/20 text-green-400 border-green-500/40' 
+                : 'bg-red-500/20 text-red-400 border-red-500/40'
             }`}>
               <div className={`w-2 h-2 rounded-full ${
                 apiStatus === 'connected' ? 'bg-green-400' : 'bg-red-400'
@@ -161,80 +268,145 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* KPI Cards */}
-        {kpiData && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {/* Campaign Metrics */}
+        {campaignMetrics && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
             <KpiCard 
-              title="Click Difference" 
-              value={kpiData.clickDifference > 0 ? `+${kpiData.clickDifference.toLocaleString()}` : kpiData.clickDifference.toLocaleString()}
+              title="Total Impressions" 
+              value={campaignMetrics.total_impressions.toLocaleString()}
+              icon="👁️"
+              trend="neutral"
+            />
+            <KpiCard 
+              title="Total Clicks" 
+              value={campaignMetrics.total_clicks.toLocaleString()}
               icon="👆"
-              trend={kpiData.clickDifference > 0 ? 'up' : kpiData.clickDifference < 0 ? 'down' : 'neutral'}
+              trend="up"
             />
             <KpiCard 
-              title="Conversion Difference" 
-              value={kpiData.conversionDifference > 0 ? `+${kpiData.conversionDifference.toLocaleString()}` : kpiData.conversionDifference.toLocaleString()}
+              title="Total Conversions" 
+              value={campaignMetrics.total_conversions.toLocaleString()}
               icon="🎯"
-              trend={kpiData.conversionDifference > 0 ? 'up' : kpiData.conversionDifference < 0 ? 'down' : 'neutral'}
+              trend="up"
             />
             <KpiCard 
-              title="Score Difference" 
-              value={kpiData.scoreDifference > 0 ? `+${kpiData.scoreDifference.toLocaleString()}` : kpiData.scoreDifference.toLocaleString()}
+              title="Campaign Score" 
+              value={campaignMetrics.score.toLocaleString()}
               icon="📊"
-              trend={kpiData.scoreDifference > 0 ? 'up' : kpiData.scoreDifference < 0 ? 'down' : 'neutral'}
-            />
-            <KpiCard 
-              title="Budget Efficiency" 
-              value={`${kpiData.budgetEfficiency.toFixed(1)}%`}
-              icon="💰"
-              trend={kpiData.budgetEfficiency > 100 ? 'down' : 'up'}
+              trend="up"
             />
           </div>
         )}
 
-        {/* Performance Banner */}
-        <div className="mb-8">
-          <PerformanceBanner improvement={improvement} />
-        </div>
+        {/* Performance Metrics */}
+        {campaignMetrics && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+            <KpiCard 
+              title="CTR" 
+              value={`${campaignMetrics.ctr.toFixed(2)}%`}
+              icon="📈"
+              trend="neutral"
+            />
+            <KpiCard 
+              title="CVR" 
+              value={`${campaignMetrics.cvr.toFixed(2)}%`}
+              icon="🔄"
+              trend="neutral"
+            />
+            <KpiCard 
+              title="Avg CPC" 
+              value={`$${campaignMetrics.avg_cpc.toFixed(2)}`}
+              icon="💵"
+              trend="neutral"
+            />
+            <KpiCard 
+              title="Budget Remaining" 
+              value={`$${campaignMetrics.remaining_budget.toFixed(2)}`}
+              icon="💰"
+              trend={campaignMetrics.remaining_budget > selectedCampaign.total_budget * 0.2 ? 'up' : 'down'}
+            />
+          </div>
+        )}
+
+        {/* Performance Banner - Only show for optimized campaigns with baseline comparison */}
+        {selectedCampaign.strategy === 'optimized' && baselineMetrics && (
+          <div className="mb-12">
+            <PerformanceBanner improvement={improvement} />
+          </div>
+        )}
+
+        {/* Comparison KPIs - Only for optimized campaigns */}
+        {kpiData && selectedCampaign.strategy === 'optimized' && (
+          <div className="mb-12">
+            <h2 className="text-3xl font-bold text-white mb-8 tracking-tight">📊 vs Baseline Strategy</h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <KpiCard 
+                title="Click Difference" 
+                value={kpiData.clickDifference > 0 ? `+${kpiData.clickDifference.toLocaleString()}` : kpiData.clickDifference.toLocaleString()}
+                icon="👆"
+                trend={kpiData.clickDifference > 0 ? 'up' : kpiData.clickDifference < 0 ? 'down' : 'neutral'}
+              />
+              <KpiCard 
+                title="Conversion Difference" 
+                value={kpiData.conversionDifference > 0 ? `+${kpiData.conversionDifference.toLocaleString()}` : kpiData.conversionDifference.toLocaleString()}
+                icon="🎯"
+                trend={kpiData.conversionDifference > 0 ? 'up' : kpiData.conversionDifference < 0 ? 'down' : 'neutral'}
+              />
+              <KpiCard 
+                title="Score Difference" 
+                value={kpiData.scoreDifference > 0 ? `+${kpiData.scoreDifference.toLocaleString()}` : kpiData.scoreDifference.toLocaleString()}
+                icon="📊"
+                trend={kpiData.scoreDifference > 0 ? 'up' : kpiData.scoreDifference < 0 ? 'down' : 'neutral'}
+              />
+              <KpiCard 
+                title="Budget Efficiency" 
+                value={`${kpiData.budgetEfficiency.toFixed(1)}%`}
+                icon="💰"
+                trend={kpiData.budgetEfficiency < 100 ? 'up' : 'down'}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Dataset Insights (EDA) */}
         {eda && (
-          <div className="mb-8">
-            <div className="bg-gradient-to-r from-blue-600/20 to-cyan-600/20 backdrop-blur-xl border border-blue-500/30 rounded-2xl p-8">
-              <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <div className="mb-12">
+            <div className="bg-gradient-to-r from-blue-600/20 to-cyan-600/20 backdrop-blur-xl border-2 border-blue-500/40 rounded-3xl p-10 shadow-xl">
+              <h2 className="text-3xl font-bold text-white mb-8 flex items-center gap-3 tracking-tight">
                 📊 Dataset Insights (EDA)
               </h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
                 <div className="text-center">
-                  <p className="text-blue-300 text-sm mb-1">Total Rows</p>
-                  <p className="text-2xl font-bold text-white">{eda.total_rows.toLocaleString()}</p>
+                  <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">Total Rows</p>
+                  <p className="text-3xl font-extrabold text-white">{eda.total_rows.toLocaleString()}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-blue-300 text-sm mb-1">Total Clicks</p>
-                  <p className="text-2xl font-bold text-white">{eda.total_clicks.toLocaleString()}</p>
+                  <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">Total Clicks</p>
+                  <p className="text-3xl font-extrabold text-white">{eda.total_clicks.toLocaleString()}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-blue-300 text-sm mb-1">Total Conversions</p>
-                  <p className="text-2xl font-bold text-white">{eda.total_conversions.toLocaleString()}</p>
+                  <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">Total Conversions</p>
+                  <p className="text-3xl font-extrabold text-white">{eda.total_conversions.toLocaleString()}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-blue-300 text-sm mb-1">Average Market Price</p>
-                  <p className="text-2xl font-bold text-white">${eda.avg_market_price}</p>
+                  <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">Average Market Price</p>
+                  <p className="text-3xl font-extrabold text-white">${eda.avg_market_price}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-8 pt-8 border-t border-white/20">
                 <div className="text-center">
-                  <p className="text-blue-300 text-sm mb-1">CTR</p>
-                  <p className="text-2xl font-bold text-white">{(eda.ctr * 100).toFixed(2)}%</p>
+                  <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">CTR</p>
+                  <p className="text-3xl font-extrabold text-white">{(eda.ctr * 100).toFixed(2)}%</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-blue-300 text-sm mb-1">CVR</p>
-                  <p className="text-2xl font-bold text-white">{(eda.cvr * 100).toFixed(2)}%</p>
+                  <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">CVR</p>
+                  <p className="text-3xl font-extrabold text-white">{(eda.cvr * 100).toFixed(2)}%</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-blue-300 text-sm mb-1">Device Distribution</p>
+                  <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">Device Distribution</p>
                   <div className="text-white">
                     {Object.entries(eda.device_distribution).map(([device, percentage]) => (
-                      <div key={device} className="text-sm">
+                      <div key={device} className="text-base font-semibold">
                         Device {device}: {(percentage * 100).toFixed(1)}%
                       </div>
                     ))}
@@ -250,14 +422,16 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Charts Section */}
-        <div className="mb-8">
-          <ChartsSection chartData={chartData} budgetData={budgetData} />
-        </div>
+        {/* Charts Section - Only for optimized campaigns with comparison */}
+        {selectedCampaign.strategy === 'optimized' && chartData.length > 0 && (
+          <div className="mb-12">
+            <ChartsSection chartData={chartData} budgetData={budgetData} />
+          </div>
+        )}
 
         {/* Advanced ML Analytics */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-white mb-6">🤖 Advanced ML Analytics</h2>
+        <div className="mb-12">
+          <h2 className="text-3xl font-bold text-white mb-8 tracking-tight">🤖 Advanced ML Analytics</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             <HourlyTrendChart data={hourly} />
             <MarketPriceHistogram data={histogram} />
@@ -266,12 +440,6 @@ export default function Dashboard() {
             <FeatureImportanceChart data={featureImportance} />
             {confidence && <ModelConfidenceCard data={confidence} />}
           </div>
-        </div>
-
-        {/* Strategy Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          <StrategyCard title="Baseline Strategy" data={baseline} type="baseline" />
-          <StrategyCard title="Optimized Strategy" data={optimized} type="optimized" />
         </div>
 
         {/* Footer */}
