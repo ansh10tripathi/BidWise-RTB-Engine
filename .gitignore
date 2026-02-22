@@ -18,6 +18,11 @@ backend/data/*.xls
 backend/data/*.csv
 
 # ======================
+# TEST / DEBUG FILES
+# ======================
+backend/test_*.py
+
+# ======================
 # MODEL FILES (optional)
 # ======================
 backend/models/*.pkl
