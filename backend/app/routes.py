@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
+from typing import List, Optional
+import os
 
 from .models import (
     CreateCampaignRequest,
@@ -12,8 +13,9 @@ from .models import (
 )
 
 from .service import CampaignService
+from rtb_engine.dataset_loader import load_dataset
 
-# 🔥 IMPORTANT: Rename engine functions to avoid conflict
+# Engine modules
 from rtb_engine.simulator import run_simulation as engine_run_simulation
 from rtb_engine.simulator import run_baseline
 from rtb_engine.eda import run_eda
@@ -26,23 +28,47 @@ from rtb_engine.advanced_analytics import (
 
 app = FastAPI(title="BidWise RTB API", version="1.0.0")
 
-# ✅ CORS (safe for dev)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # dev mode
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ==============================
-# CAMPAIGN CRUD ROUTES
-# ==============================
+# =================================================
+# CAMPAIGN CRUD
+# =================================================
 
 @app.post("/create-campaign", response_model=Campaign, status_code=201)
-async def create_campaign(request: CreateCampaignRequest):
-    campaign = CampaignService.create_campaign(request)
-    return campaign
+async def create_campaign(
+    campaignName: str = Form(...),
+    totalBudget: float = Form(...),
+    baseBid: float = Form(...),
+    strategy: str = Form(...),
+    conversionWeight: int = Form(...),
+    deviceTargeting: str = Form(...),
+    activeHours: str = Form(...),
+    file: Optional[UploadFile] = File(None)
+):
+    if file:
+        _, ext = os.path.splitext(file.filename)
+        if ext.lower() not in [".csv", ".xls", ".xlsx"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Only CSV and Excel files (.csv, .xls, .xlsx) are supported"
+            )
+
+    return await CampaignService.create_campaign(
+        campaignName,
+        totalBudget,
+        baseBid,
+        strategy,
+        conversionWeight,
+        deviceTargeting,
+        activeHours,
+        file
+    )
 
 
 @app.get("/campaigns", response_model=List[Campaign])
@@ -60,15 +86,14 @@ async def get_campaign(campaign_id: str):
 
 @app.delete("/campaigns/{campaign_id}", status_code=204)
 async def delete_campaign(campaign_id: str):
-    deleted = CampaignService.delete_campaign(campaign_id)
-    if not deleted:
+    if not CampaignService.delete_campaign(campaign_id):
         raise HTTPException(status_code=404, detail="Campaign not found")
     return None
 
 
-# ==============================
-# CAMPAIGN ANALYTICS
-# ==============================
+# =================================================
+# CAMPAIGN SIMULATION + ANALYTICS
+# =================================================
 
 @app.get("/campaigns/{campaign_id}/metrics", response_model=Metrics)
 async def get_metrics(campaign_id: str):
@@ -94,26 +119,95 @@ async def run_campaign_simulation(campaign_id: str, request: SimulationRequest):
     return CampaignService.run_simulation(campaign_id, request.strategy)
 
 
-@app.post("/campaigns/{campaign_id}/clear-cache", status_code=204)
-async def clear_campaign_cache(campaign_id: str):
-    """Clear simulation cache for a campaign to force re-computation."""
+# =================================================
+# 🔥 CAMPAIGN-SPECIFIC ENGINE ANALYTICS (NEW)
+# =================================================
+
+@app.get("/campaigns/{campaign_id}/eda")
+def campaign_eda(campaign_id: str):
     campaign = CampaignService.get_campaign(campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    CampaignService.clear_cache(campaign_id)
-    return None
+
+    # Use campaign-specific dataset if uploaded, otherwise use default
+    dataset_path = campaign.dataset_path if campaign.dataset_path else "data/train.csv"
+    print(f"[EDA] Campaign ID: {campaign_id}, Dataset Path: {dataset_path}")
+    df = load_dataset(dataset_path)
+    print(f"[EDA] Loaded {len(df)} rows from {dataset_path}")
+    
+    # Calculate EDA metrics from campaign-specific data
+    total_rows = len(df)
+    total_clicks = df["click"].sum()
+    total_conversions = df["conversion"].sum()
+    ctr = total_clicks / total_rows if total_rows else 0
+    cvr = total_conversions / total_rows if total_rows else 0
+    avg_market_price = df["market_price"].mean()
+    device_distribution = df["device_type"].value_counts(normalize=True).to_dict()
+    
+    result = {
+        "total_rows": int(total_rows),
+        "total_clicks": int(total_clicks),
+        "total_conversions": int(total_conversions),
+        "ctr": round(ctr, 4),
+        "cvr": round(cvr, 4),
+        "avg_market_price": round(avg_market_price, 2),
+        "device_distribution": device_distribution
+    }
+    print(f"[EDA] Result: {result}")
+    return result
 
 
-@app.post("/clear-all-cache", status_code=204)
-async def clear_all_cache():
-    """Clear all simulation caches. Use after dataset changes."""
-    CampaignService.clear_cache()
-    return None
+@app.get("/campaigns/{campaign_id}/hourly")
+def campaign_hourly(campaign_id: str):
+    campaign = CampaignService.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    # Use campaign-specific dataset if uploaded, otherwise use default
+    dataset_path = campaign.dataset_path if campaign.dataset_path else "data/train.csv"
+    df = load_dataset(dataset_path)
+    return get_hourly_trend(df)
 
 
-# ==============================
-# ENGINE ROUTES (NO CONFLICT NOW)
-# ==============================
+@app.get("/campaigns/{campaign_id}/market-price")
+def campaign_market_price(campaign_id: str):
+    campaign = CampaignService.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    # Use campaign-specific dataset if uploaded, otherwise use default
+    dataset_path = campaign.dataset_path if campaign.dataset_path else "data/train.csv"
+    df = load_dataset(dataset_path)
+    return get_market_price_histogram(df)
+
+
+@app.get("/campaigns/{campaign_id}/feature-importance")
+def campaign_feature_importance(campaign_id: str):
+    campaign = CampaignService.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    # Use campaign-specific dataset if uploaded, otherwise use default
+    dataset_path = campaign.dataset_path if campaign.dataset_path else "data/train.csv"
+    df = load_dataset(dataset_path)
+    return get_feature_importance(df)
+
+
+@app.get("/campaigns/{campaign_id}/confidence")
+def campaign_confidence(campaign_id: str):
+    campaign = CampaignService.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    # Use campaign-specific dataset if uploaded, otherwise use default
+    dataset_path = campaign.dataset_path if campaign.dataset_path else "data/train.csv"
+    df = load_dataset(dataset_path)
+    return get_model_confidence(df)
+
+
+# =================================================
+# DEFAULT ENGINE ROUTES (OPTIONAL)
+# =================================================
 
 @app.get("/baseline")
 def baseline():
@@ -122,43 +216,43 @@ def baseline():
 
 @app.get("/optimized")
 def optimized():
-    return engine_run_simulation()  # 🔥 FIXED
+    return engine_run_simulation()
 
 
 @app.get("/eda")
 def eda():
+    df = load_dataset("data/train.csv")
     return run_eda()
 
 
 @app.get("/analytics/hourly")
 def analytics_hourly():
-    return get_hourly_trend()
+    df = load_dataset("data/train.csv")
+    return get_hourly_trend(df)
 
 
 @app.get("/analytics/market-price")
 def analytics_market_price():
-    return get_market_price_histogram()
+    df = load_dataset("data/train.csv")
+    return get_market_price_histogram(df)
 
 
 @app.get("/analytics/feature-importance")
 def analytics_feature_importance():
-    return get_feature_importance()
+    df = load_dataset("data/train.csv")
+    return get_feature_importance(df)
 
 
 @app.get("/analytics/confidence")
 def analytics_confidence():
-    return get_model_confidence()
+    df = load_dataset("data/train.csv")
+    return get_model_confidence(df)
 
 
-# ==============================
-# HEALTH + ROOT
-# ==============================
+# =================================================
+# HEALTH
+# =================================================
 
 @app.get("/health")
-async def health_check():
+def health():
     return {"status": "healthy"}
-
-
-@app.get("/")
-def root():
-    return {"message": "BidWise RTB API Running 🚀"}

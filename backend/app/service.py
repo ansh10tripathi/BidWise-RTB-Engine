@@ -1,6 +1,9 @@
 from datetime import datetime
 from uuid import uuid4
 from typing import Dict, Optional
+import json
+import os
+from fastapi import UploadFile
 
 from .models import (
     CreateCampaignRequest,
@@ -15,6 +18,8 @@ from .models import (
 
 from rtb_engine.campaign_simulator import run_campaign_simulation
 
+# Updated to support Excel files
+
 # In-memory storage
 campaigns_db: Dict[str, Campaign] = {}
 
@@ -25,20 +30,40 @@ simulation_cache: Dict[str, dict] = {}
 class CampaignService:
 
     @staticmethod
-    def create_campaign(request: CreateCampaignRequest) -> Campaign:
+    async def create_campaign(
+        campaign_name: str,
+        total_budget: float,
+        base_bid: float,
+        strategy: str,
+        conversion_weight: int,
+        device_targeting: str,
+        active_hours_str: str,
+        file: Optional[UploadFile] = None
+    ) -> Campaign:
         campaign_id = str(uuid4())
+        active_hours = json.loads(active_hours_str)
+        
+        dataset_path = None
+        if file:
+            os.makedirs("data/campaigns", exist_ok=True)
+            _, ext = os.path.splitext(file.filename)
+            dataset_path = f"data/campaigns/{campaign_id}{ext}"
+            with open(dataset_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
 
         campaign = Campaign(
             id=campaign_id,
-            campaign_name=request.campaign_name,
-            total_budget=request.total_budget,
-            base_bid=request.base_bid,
-            strategy=request.strategy,
-            conversion_weight=request.conversion_weight,
-            device_targeting=request.device_targeting,
-            active_hours=request.active_hours,
+            campaign_name=campaign_name,
+            total_budget=total_budget,
+            base_bid=base_bid,
+            strategy=strategy,
+            conversion_weight=conversion_weight,
+            device_targeting=device_targeting,
+            active_hours=active_hours,
             status="active",
             created_at=datetime.now(),
+            dataset_path=dataset_path
         )
 
         campaigns_db[campaign_id] = campaign
@@ -60,15 +85,20 @@ class CampaignService:
         
         # Check cache first
         if campaign_id not in simulation_cache:
-            result = run_campaign_simulation(
-                initial_budget=campaign.total_budget,
-                base_bid=campaign.base_bid,
-                strategy=campaign.strategy,
-                conversion_weight=campaign.conversion_weight,
-                device_targeting=campaign.device_targeting,
-                active_hours=campaign.active_hours
-            )
-            simulation_cache[campaign_id] = result
+            try:
+                result = run_campaign_simulation(
+                    initial_budget=campaign.total_budget,
+                    base_bid=campaign.base_bid,
+                    strategy=campaign.strategy,
+                    conversion_weight=campaign.conversion_weight,
+                    device_targeting=campaign.device_targeting,
+                    active_hours=campaign.active_hours,
+                    dataset_path=campaign.dataset_path
+                )
+                simulation_cache[campaign_id] = result
+            except Exception as e:
+                print(f"Error in get_metrics for campaign {campaign_id}: {str(e)}")
+                raise
         
         metrics_data = simulation_cache[campaign_id]["metrics"]
         return Metrics(**metrics_data)
@@ -87,7 +117,8 @@ class CampaignService:
                 strategy=campaign.strategy,
                 conversion_weight=campaign.conversion_weight,
                 device_targeting=campaign.device_targeting,
-                active_hours=campaign.active_hours
+                active_hours=campaign.active_hours,
+                dataset_path=campaign.dataset_path
             )
             simulation_cache[campaign_id] = result
         

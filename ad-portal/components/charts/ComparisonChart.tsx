@@ -19,8 +19,8 @@ export default function ComparisonChart({ title, data }: ComparisonChartProps) {
           <YAxis stroke="#9ca3af" tick={{ fill: "#9ca3af" }} />
           <Tooltip
             contentStyle={{
-              backgroundColor: "rgba(15, 23, 42, 0.95)",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
+              backgroundColor: "#0f172a",
+              border: "1px solid #334155",
               borderRadius: "8px",
             }}
           />

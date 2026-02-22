@@ -2,9 +2,10 @@ import pandas as pd
 from rtb_engine.predicator import Predictor
 from rtb_engine.budget_manager import BudgetManager
 from rtb_engine.strategy import BiddingStrategy
+from rtb_engine.dataset_loader import load_dataset
 
 def run_simulation(initial_budget=10000):
-    df = pd.read_csv("data/train.csv")
+    df = load_dataset("data/train.csv")
 
     predictor = Predictor()
     budget_manager = BudgetManager(initial_budget)
@@ -79,7 +80,7 @@ def run_simulation(initial_budget=10000):
 
 
 def run_baseline(initial_budget=10000, fixed_bid=5):
-    df = pd.read_csv("data/train.csv")
+    df = load_dataset("data/train.csv")
 
     budget_manager = BudgetManager(initial_budget)
 

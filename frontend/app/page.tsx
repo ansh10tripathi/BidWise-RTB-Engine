@@ -116,11 +116,11 @@ export default function Dashboard() {
         // Fetch campaign metrics and baseline comparison
         const [metricsRes, edaRes, hourlyRes, histogramRes, featureRes, confidenceRes] = await Promise.all([
           fetch(`http://127.0.0.1:8000/campaigns/${selectedCampaign.id}/metrics`),
-          fetch('http://127.0.0.1:8000/eda'),
-          fetch('http://127.0.0.1:8000/analytics/hourly'),
-          fetch('http://127.0.0.1:8000/analytics/market-price'),
-          fetch('http://127.0.0.1:8000/analytics/feature-importance'),
-          fetch('http://127.0.0.1:8000/analytics/confidence')
+          fetch(`http://127.0.0.1:8000/campaigns/${selectedCampaign.id}/eda`),
+          fetch(`http://127.0.0.1:8000/campaigns/${selectedCampaign.id}/hourly`),
+          fetch(`http://127.0.0.1:8000/campaigns/${selectedCampaign.id}/market-price`),
+          fetch(`http://127.0.0.1:8000/campaigns/${selectedCampaign.id}/feature-importance`),
+          fetch(`http://127.0.0.1:8000/campaigns/${selectedCampaign.id}/confidence`)
         ])
         
         if (!metricsRes.ok) {
@@ -378,36 +378,36 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
                 <div className="text-center">
                   <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">Total Rows</p>
-                  <p className="text-3xl font-extrabold text-white">{eda.total_rows.toLocaleString()}</p>
+                  <p className="text-3xl font-extrabold text-white">{eda?.total_rows?.toLocaleString() ?? "0"}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">Total Clicks</p>
-                  <p className="text-3xl font-extrabold text-white">{eda.total_clicks.toLocaleString()}</p>
+                  <p className="text-3xl font-extrabold text-white">{eda.total_clicks.toLocaleString() ?? "0"}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">Total Conversions</p>
-                  <p className="text-3xl font-extrabold text-white">{eda.total_conversions.toLocaleString()}</p>
+                  <p className="text-3xl font-extrabold text-white">{eda.total_conversions.toLocaleString() ?? "0"}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">Average Market Price</p>
-                  <p className="text-3xl font-extrabold text-white">${eda.avg_market_price}</p>
+                  <p className="text-3xl font-extrabold text-white">${eda.avg_market_price ?? "0"}</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-8 pt-8 border-t border-white/20">
                 <div className="text-center">
                   <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">CTR</p>
-                  <p className="text-3xl font-extrabold text-white">{(eda.ctr * 100).toFixed(2)}%</p>
+                  <p className="text-3xl font-extrabold text-white">{(eda.ctr * 100).toFixed(2) ?? "0"}%</p>
                 </div>
                 <div className="text-center">
                   <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">CVR</p>
-                  <p className="text-3xl font-extrabold text-white">{(eda.cvr * 100).toFixed(2)}%</p>
+                  <p className="text-3xl font-extrabold text-white">{(eda.cvr * 100).toFixed(2) ?? "0"}%</p>
                 </div>
                 <div className="text-center">
                   <p className="text-cyan-300 text-sm mb-2 uppercase tracking-wide">Device Distribution</p>
                   <div className="text-white">
                     {Object.entries(eda.device_distribution).map(([device, percentage]) => (
                       <div key={device} className="text-base font-semibold">
-                        Device {device}: {(percentage * 100).toFixed(1)}%
+                        Device {device}: {(percentage * 100).toFixed(1) ?? "0"}%
                       </div>
                     ))}
                   </div>

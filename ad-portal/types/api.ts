@@ -7,29 +7,29 @@ export interface ApiResponse<T> {
 }
 
 export interface MetricsResponse {
-  totalImpressions: number;
-  totalClicks: number;
-  totalConversions: number;
-  totalSpent: number;
-  remainingBudget: number;
+  total_impressions: number;
+  total_clicks: number;
+  total_conversions: number;
+  total_spent: number;
+  remaining_budget: number;
   ctr: number;
   cvr: number;
   score: number;
-  avgCPC: number;
+  avg_cpc: number;
 }
 
 export interface AnalyticsResponse {
-  hourlyPerformance: {
+  hourly_performance: {
     hour: number;
     clicks: number;
     conversions: number;
     ctr: number;
   }[];
-  devicePerformance: {
+  device_performance: {
     mobile: { clicks: number; conversions: number; ctr: number; cvr: number };
     desktop: { clicks: number; conversions: number; ctr: number; cvr: number };
   };
-  featureImportance: {
+  feature_importance: {
     feature: string;
     importance: number;
   }[];

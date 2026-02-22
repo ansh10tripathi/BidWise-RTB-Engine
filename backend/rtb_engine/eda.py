@@ -1,7 +1,8 @@
 import pandas as pd
+from rtb_engine.dataset_loader import load_dataset
 
 def run_eda():
-    df = pd.read_csv("data/train.csv")
+    df = load_dataset("data/train.csv")
 
     total_rows = len(df)
     total_clicks = df["click"].sum()

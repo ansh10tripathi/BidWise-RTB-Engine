@@ -1,206 +1,204 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Slider from "@/components/ui/Slider";
-import MultiSelect from "@/components/ui/MultiSelect";
-import Button from "@/components/ui/Button";
-import { ArrowLeft, Sparkles } from "lucide-react";
-import { CreateCampaignRequest } from "@/types/campaign";
-import { apiClient } from "@/lib/api/client";
 
 export default function CreateCampaignPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const [formData, setFormData] = useState<CreateCampaignRequest>({
+  const [formData, setFormData] = useState({
     campaignName: "",
     totalBudget: 10000,
-    baseBid: 5,
-    strategy: "optimized",
+    baseBid: 50,
     conversionWeight: 10,
+    strategy: "optimized",
     deviceTargeting: "all",
-    activeHours: Array.from({ length: 24 }, (_, i) => i),
+    activeHours: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
   });
+  const [file, setFile] = useState<File | null>(null);
 
-  const validate = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.campaignName.trim()) {
-      newErrors.campaignName = "Campaign name is required";
-    }
-    if (formData.totalBudget <= 0) {
-      newErrors.totalBudget = "Budget must be greater than 0";
-    }
-    if (formData.baseBid <= 0) {
-      newErrors.baseBid = "Base bid must be greater than 0";
-    }
-    if (formData.activeHours.length === 0) {
-      newErrors.activeHours = "Select at least one active hour";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validate()) return;
-
-    setLoading(true);
-
     try {
-      const campaign = await apiClient.createCampaign(formData);
-      console.log("Campaign created:", campaign);
-      router.push("/campaigns");
+      const formDataToSend = new FormData();
+      formDataToSend.append("campaignName", formData.campaignName);
+      formDataToSend.append("totalBudget", formData.totalBudget.toString());
+      formDataToSend.append("baseBid", formData.baseBid.toString());
+      formDataToSend.append("conversionWeight", formData.conversionWeight.toString());
+      formDataToSend.append("strategy", formData.strategy);
+      formDataToSend.append("deviceTargeting", formData.deviceTargeting);
+      formDataToSend.append("activeHours", JSON.stringify(formData.activeHours));
+      if (file) {
+        formDataToSend.append("file", file);
+      }
+      
+      const response = await fetch("http://localhost:8000/create-campaign", {
+        method: "POST",
+        body: formDataToSend
+      });
+      
+      if (response.ok) {
+        router.push("/dashboard");
+      } else {
+        const error = await response.json();
+        console.error("Failed to create campaign:", error);
+      }
     } catch (error) {
-      console.error("Error creating campaign:", error);
-      alert("Failed to create campaign. Please ensure the backend is running on http://localhost:8000");
-    } finally {
-      setLoading(false);
+      console.error("Failed to create campaign:", error);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => router.back()}
-          className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 text-gray-400" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-white mb-1">Create Campaign</h1>
-          <p className="text-gray-400">Set up a new advertising campaign</p>
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Basic Information */}
-        <Card>
-          <div className="flex items-center gap-2 mb-6">
-            <Sparkles className="w-5 h-5 text-cyan-500" />
-            <h2 className="text-lg font-semibold text-white">Basic Information</h2>
-          </div>
-
-          <div className="space-y-4">
+    <div className="max-w-2xl mx-auto p-8">
+      <h1 className="text-3xl font-bold text-white mb-8">Create New Campaign</h1>
+      
+      <Card className="p-8">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              Campaign Name
+            </label>
             <Input
-              label="Campaign Name"
-              placeholder="e.g., Summer Sale 2024"
               value={formData.campaignName}
-              onChange={(e) => setFormData({ ...formData, campaignName: e.target.value })}
-              error={errors.campaignName}
+              onChange={(e) => setFormData({...formData, campaignName: e.target.value})}
+              placeholder="Enter campaign name"
+              required
             />
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Total Budget ($)"
-                type="number"
-                placeholder="10000"
-                value={formData.totalBudget}
-                onChange={(e) => setFormData({ ...formData, totalBudget: Number(e.target.value) })}
-                error={errors.totalBudget}
-              />
-
-              <Input
-                label="Base Bid ($)"
-                type="number"
-                step="0.01"
-                placeholder="5.00"
-                value={formData.baseBid}
-                onChange={(e) => setFormData({ ...formData, baseBid: Number(e.target.value) })}
-                error={errors.baseBid}
-              />
-            </div>
           </div>
-        </Card>
 
-        {/* Strategy & Optimization */}
-        <Card>
-          <h2 className="text-lg font-semibold text-white mb-6">Strategy & Optimization</h2>
-
-          <div className="space-y-6">
-            <Select
-              label="Bidding Strategy"
-              value={formData.strategy}
-              onChange={(e) =>
-                setFormData({ ...formData, strategy: e.target.value as "baseline" | "optimized" })
-              }
-              options={[
-                { value: "baseline", label: "Baseline - Fixed Bidding" },
-                { value: "optimized", label: "Optimized - ML-Powered Bidding" },
-              ]}
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              Total Budget ($)
+            </label>
+            <Input
+              type="number"
+              value={formData.totalBudget}
+              onChange={(e) => setFormData({...formData, totalBudget: Number(e.target.value)})}
+              min="1000"
+              max="100000"
+              required
             />
+          </div>
 
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              Base Bid ($)
+            </label>
+            <Input
+              type="number"
+              value={formData.baseBid}
+              onChange={(e) => setFormData({...formData, baseBid: Number(e.target.value)})}
+              min="1"
+              max="500"
+              required
+            />
+          </div>
+
+          <div>
             <Slider
-              label="Conversion Weight (N)"
+              label="Conversion Weight"
               value={formData.conversionWeight}
+              onChange={(e) => setFormData({...formData, conversionWeight: Number(e.target.value)})}
               min={1}
               max={20}
               step={1}
-              onChange={(e) => setFormData({ ...formData, conversionWeight: Number(e.target.value) })}
             />
-            <p className="text-xs text-gray-500 -mt-4">
-              Score = Clicks + N × Conversions
-            </p>
+            <div className="text-sm text-slate-400 mt-1">
+              Current: {formData.conversionWeight}x
+            </div>
           </div>
-        </Card>
 
-        {/* Targeting */}
-        <Card>
-          <h2 className="text-lg font-semibold text-white mb-6">Targeting</h2>
+          <div>
+            <Select
+              label="Strategy"
+              value={formData.strategy}
+              onChange={(e) => setFormData({...formData, strategy: e.target.value})}
+              options={[
+                { value: "optimized", label: "Optimized" },
+                { value: "baseline", label: "Baseline" }
+              ]}
+            />
+          </div>
 
-          <div className="space-y-6">
+          <div>
             <Select
               label="Device Targeting"
               value={formData.deviceTargeting}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  deviceTargeting: e.target.value as "mobile" | "desktop" | "all",
-                })
-              }
+              onChange={(e) => setFormData({...formData, deviceTargeting: e.target.value})}
               options={[
                 { value: "all", label: "All Devices" },
                 { value: "mobile", label: "Mobile Only" },
-                { value: "desktop", label: "Desktop Only" },
+                { value: "desktop", label: "Desktop Only" }
               ]}
             />
+          </div>
 
-            <MultiSelect
-              label="Active Hours (0-23)"
-              selected={formData.activeHours}
-              onChange={(hours) => setFormData({ ...formData, activeHours: hours })}
-              options={Array.from({ length: 24 }, (_, i) => i)}
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              Active Hours
+            </label>
+            <div className="text-sm text-slate-400 mb-2">
+              Campaign will run 24/7 (all hours selected by default)
+            </div>
+            <div className="grid grid-cols-6 gap-2">
+              {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
+                <button
+                  key={hour}
+                  type="button"
+                  onClick={() => {
+                    const newHours = formData.activeHours.includes(hour)
+                      ? formData.activeHours.filter(h => h !== hour)
+                      : [...formData.activeHours, hour].sort((a, b) => a - b);
+                    setFormData({...formData, activeHours: newHours});
+                  }}
+                  className={`px-2 py-1 rounded text-xs transition-colors ${
+                    formData.activeHours.includes(hour)
+                      ? "bg-cyan-500 text-white"
+                      : "bg-white/5 text-gray-400 hover:bg-white/10"
+                  }`}
+                >
+                  {hour}:00
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              Custom Dataset (Optional)
+            </label>
+            <input
+              type="file"
+              accept=".csv, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-cyan-500/20 file:text-cyan-400 hover:file:bg-cyan-500/30 transition-colors"
             />
-            {errors.activeHours && (
-              <p className="text-sm text-red-400 -mt-4">{errors.activeHours}</p>
+            {file && (
+              <div className="text-sm text-cyan-400 mt-2">
+                Selected: {file.name}
+              </div>
             )}
           </div>
-        </Card>
 
-        {/* Actions */}
-        <div className="flex gap-4">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.back()}
-            className="flex-1"
-          >
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" disabled={loading} className="flex-1">
-            {loading ? "Creating..." : "Create Campaign"}
-          </Button>
-        </div>
-      </form>
+          <div className="flex gap-4 pt-4">
+            <Button type="submit" className="flex-1">
+              Create Campaign
+            </Button>
+            <Button 
+              type="button" 
+              variant="secondary" 
+              onClick={() => router.back()}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 }

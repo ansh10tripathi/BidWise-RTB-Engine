@@ -11,217 +11,248 @@ import FeatureImportanceChart from "@/components/charts/FeatureImportanceChart";
 import DevicePerformance from "@/components/charts/DevicePerformance";
 import AdvancedMetrics from "@/components/charts/AdvancedMetrics";
 import { DollarSign, MousePointerClick, Target, Percent, Award, TrendingUp, Wallet, Zap } from "lucide-react";
+import { apiClient } from "@/lib/api/client";
+import { Campaign } from "@/types/campaign";
+import { MetricsResponse, AnalyticsResponse } from "@/types/api";
 
 export default function DashboardPage() {
-  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null);
+  const [baselineMetrics, setBaselineMetrics] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Auto-refresh metrics every 2 seconds
   useEffect(() => {
-    const interval = setInterval(() => {
-      setLastUpdate(new Date());
-      // Fetch metrics here when API is ready
-      // apiClient.getMetrics(campaignId).then(setKpiData);
-    }, 2000);
-
-    return () => clearInterval(interval);
+    const fetchCampaigns = async () => {
+      try {
+        const data = await apiClient.getCampaigns();
+        setCampaigns(data);
+        if (data.length > 0) {
+          setSelectedCampaign(data[0]);
+        }
+      } catch (error) {
+        console.error("Failed to fetch campaigns:", error);
+      }
+    };
+    fetchCampaigns();
   }, []);
-  // Mock data
-  const kpiData = {
-    budget: 10000,
-    spent: 9920.8,
-    clicks: 1580,
-    conversions: 142,
-    ctr: 4.11,
-    cvr: 8.99,
-    score: 1722,
-    improvement: 29.1,
+
+  useEffect(() => {
+    if (!selectedCampaign) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [metricsData, analyticsData] = await Promise.all([
+          apiClient.getMetrics(selectedCampaign.id),
+          apiClient.getAnalytics(selectedCampaign.id),
+        ]);
+        
+        setMetrics(metricsData);
+        setAnalytics(analyticsData);
+
+        if (selectedCampaign.strategy === "optimized") {
+          const baselineRes = await fetch("http://localhost:8000/baseline");
+          if (baselineRes.ok) {
+            setBaselineMetrics(await baselineRes.json());
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [selectedCampaign]);
+
+  const calculateImprovement = (current: number, baseline: number) => {
+    if (!baseline || baseline === 0) return 0;
+    return ((current - baseline) / baseline) * 100;
   };
 
-  const comparisonData = [
-    { metric: "Clicks", Baseline: 1245, Optimized: 1580 },
-    { metric: "Conversions", Baseline: 89, Optimized: 142 },
-    { metric: "Score", Baseline: 1334, Optimized: 1722 },
-  ];
+  const clickImprovement = baselineMetrics ? calculateImprovement(metrics?.total_clicks || 0, baselineMetrics.clicks) : 0;
+  const conversionImprovement = baselineMetrics ? calculateImprovement(metrics?.total_conversions || 0, baselineMetrics.conversions) : 0;
+  const scoreImprovement = baselineMetrics ? calculateImprovement(metrics?.score || 0, baselineMetrics.score) : 0;
+  const ctrImprovement = baselineMetrics && metrics ? calculateImprovement(metrics.ctr, (baselineMetrics.clicks / 10000) * 100) : 0;
+  const cvrImprovement = baselineMetrics && metrics ? calculateImprovement(metrics.cvr, (baselineMetrics.conversions / baselineMetrics.clicks) * 100) : 0;
 
-  const scoreTrendData = [
-    { day: "Day 1", score: 1420 },
-    { day: "Day 2", score: 1550 },
-    { day: "Day 3", score: 1680 },
-    { day: "Day 4", score: 1722 },
-  ];
+  if (loading || !metrics || !analytics) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-white text-xl">Loading dashboard...</div>
+      </div>
+    );
+  }
 
-  const hourlyData = [
-    { hour: 0, clicks: 42, conversions: 3, ctr: 3.28 },
-    { hour: 6, clicks: 55, conversions: 5, ctr: 3.79 },
-    { hour: 10, clicks: 78, conversions: 8, ctr: 4.22 },
-    { hour: 14, clicks: 92, conversions: 10, ctr: 4.42 },
-    { hour: 18, clicks: 128, conversions: 15, ctr: 5.08 },
-    { hour: 20, clicks: 148, conversions: 18, ctr: 5.32 },
-    { hour: 22, clicks: 138, conversions: 14, ctr: 5.21 },
-  ];
+  if (!selectedCampaign) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="text-6xl mb-4">📊</div>
+          <h2 className="text-2xl font-bold text-white mb-2">No Campaigns Found</h2>
+          <p className="text-slate-400">Create a campaign to get started</p>
+        </div>
+      </div>
+    );
+  }
 
-  const featureData = [
-    { feature: "Hour", importance: 0.35 },
-    { feature: "Campaign", importance: 0.28 },
-    { feature: "Device", importance: 0.22 },
-    { feature: "Floor Price", importance: 0.15 },
-  ];
-
-  const deviceData = {
-    mobile: { clicks: 890, conversions: 85, ctr: 4.52, cvr: 9.55 },
-    desktop: { clicks: 690, conversions: 57, ctr: 3.58, cvr: 8.26 },
-  };
-
-  const heatmapData = [
-    { hour: 0, value: 42, label: "42 clicks" },
-    { hour: 1, value: 35, label: "35 clicks" },
-    { hour: 2, value: 28, label: "28 clicks" },
-    { hour: 3, value: 22, label: "22 clicks" },
-    { hour: 4, value: 18, label: "18 clicks" },
-    { hour: 5, value: 25, label: "25 clicks" },
-    { hour: 6, value: 55, label: "55 clicks" },
-    { hour: 7, value: 68, label: "68 clicks" },
-    { hour: 8, value: 72, label: "72 clicks" },
-    { hour: 9, value: 75, label: "75 clicks" },
-    { hour: 10, value: 78, label: "78 clicks" },
-    { hour: 11, value: 82, label: "82 clicks" },
-    { hour: 12, value: 88, label: "88 clicks" },
-    { hour: 13, value: 85, label: "85 clicks" },
-    { hour: 14, value: 92, label: "92 clicks" },
-    { hour: 15, value: 95, label: "95 clicks" },
-    { hour: 16, value: 105, label: "105 clicks" },
-    { hour: 17, value: 118, label: "118 clicks" },
-    { hour: 18, value: 128, label: "128 clicks" },
-    { hour: 19, value: 135, label: "135 clicks" },
-    { hour: 20, value: 148, label: "148 clicks" },
-    { hour: 21, value: 142, label: "142 clicks" },
-    { hour: 22, value: 138, label: "138 clicks" },
-    { hour: 23, value: 95, label: "95 clicks" },
-  ];
+  const comparisonData = baselineMetrics ? [
+    { metric: "Clicks", Baseline: baselineMetrics.clicks, Optimized: metrics.total_clicks },
+    { metric: "Conversions", Baseline: baselineMetrics.conversions, Optimized: metrics.total_conversions },
+    { metric: "Score", Baseline: baselineMetrics.score, Optimized: metrics.score },
+  ] : [];
 
   return (
-    <div className="space-y-8 pb-8">
+    <div className="space-y-10 pb-10 p-8">
       {/* Header */}
-      <div className="flex items-center justify-between pb-6 border-b border-white/5">
+      <div className="flex items-center justify-between pb-6 border-b border-slate-800">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Campaign Dashboard</h1>
-          <p className="text-sm text-gray-400">Real-time performance analytics</p>
+          <p className="text-slate-400 text-sm">{selectedCampaign.campaign_name}</p>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-green-500/10 border border-green-500/20 rounded-lg shadow-lg shadow-green-500/5">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-sm text-green-400 font-medium">Live</span>
+        <div className="flex items-center gap-4">
+          {campaigns.length > 1 && (
+            <select
+              value={selectedCampaign.id}
+              onChange={(e) => {
+                const campaign = campaigns.find(c => c.id === e.target.value);
+                if (campaign) setSelectedCampaign(campaign);
+              }}
+              className="px-4 py-2 bg-slate-900 text-white rounded-xl border border-slate-800 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 transition-all"
+            >
+              {campaigns.map(campaign => (
+                <option key={campaign.id} value={campaign.id} className="bg-slate-900">
+                  {campaign.campaign_name}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-sm text-green-400 font-medium">Live</span>
+          </div>
         </div>
       </div>
 
       {/* KPI Cards Section */}
       <section>
-        <h2 className="text-lg font-semibold text-white mb-4">Key Performance Indicators</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <h2 className="text-lg font-semibold text-white mb-6">Key Performance Indicators</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard
             title="Total Budget"
-            value={`$${kpiData.budget.toLocaleString()}`}
+            value={`$${selectedCampaign.total_budget.toLocaleString()}`}
             icon={Wallet}
             color="green"
           />
           <MetricCard
             title="Total Spent"
-            value={`$${kpiData.spent.toLocaleString()}`}
-            subtitle={`${((kpiData.spent / kpiData.budget) * 100).toFixed(1)}% used`}
+            value={`$${metrics.total_spent.toLocaleString()}`}
+            subtitle={`${((metrics.total_spent / selectedCampaign.total_budget) * 100).toFixed(1)}% used`}
             icon={DollarSign}
             color="cyan"
           />
           <MetricCard
             title="Total Clicks"
-            value={kpiData.clicks.toLocaleString()}
+            value={metrics.total_clicks.toLocaleString()}
             icon={MousePointerClick}
-            trend={{ value: 26.9, isPositive: true }}
+            trend={selectedCampaign.strategy === "optimized" && baselineMetrics ? { value: clickImprovement, isPositive: clickImprovement > 0 } : undefined}
             color="blue"
           />
           <MetricCard
             title="Conversions"
-            value={kpiData.conversions}
+            value={metrics.total_conversions}
             icon={Target}
-            trend={{ value: 59.6, isPositive: true }}
+            trend={selectedCampaign.strategy === "optimized" && baselineMetrics ? { value: conversionImprovement, isPositive: conversionImprovement > 0 } : undefined}
             color="purple"
           />
           <MetricCard
             title="CTR"
-            value={`${kpiData.ctr}%`}
+            value={`${metrics.ctr.toFixed(2)}%`}
             subtitle="Click-through rate"
             icon={Percent}
-            trend={{ value: 49.5, isPositive: true }}
+            trend={selectedCampaign.strategy === "optimized" && baselineMetrics ? { value: ctrImprovement, isPositive: ctrImprovement > 0 } : undefined}
             color="cyan"
           />
           <MetricCard
             title="CVR"
-            value={`${kpiData.cvr}%`}
+            value={`${metrics.cvr.toFixed(2)}%`}
             subtitle="Conversion rate"
             icon={TrendingUp}
-            trend={{ value: 25.7, isPositive: true }}
+            trend={selectedCampaign.strategy === "optimized" && baselineMetrics ? { value: cvrImprovement, isPositive: cvrImprovement > 0 } : undefined}
             color="green"
           />
           <MetricCard
             title="Total Score"
-            value={kpiData.score}
-            subtitle="Clicks + 10×Conversions"
+            value={metrics.score}
+            subtitle={`Clicks + ${selectedCampaign.conversion_weight}×Conversions`}
             icon={Award}
-            trend={{ value: 29.1, isPositive: true }}
+            trend={selectedCampaign.strategy === "optimized" && baselineMetrics ? { value: scoreImprovement, isPositive: scoreImprovement > 0 } : undefined}
             color="orange"
           />
-          <MetricCard
-            title="Performance"
-            value={`+${kpiData.improvement}%`}
-            subtitle="vs baseline"
-            icon={Zap}
-            color="pink"
+          {selectedCampaign.strategy === "optimized" && baselineMetrics && (
+            <MetricCard
+              title="Performance"
+              value={`${scoreImprovement > 0 ? '+' : ''}${scoreImprovement.toFixed(1)}%`}
+              subtitle="vs baseline"
+              icon={Zap}
+              color="pink"
+            />
+          )}
+        </div>
+      </section>
+
+      <div className="border-t border-slate-800"></div>
+
+      {selectedCampaign.strategy === "optimized" && comparisonData.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold text-white mb-6">Performance Comparison</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <ComparisonChart title="Baseline vs Optimized" data={comparisonData} />
+            <BudgetPieChart title="Budget Usage" spent={metrics.total_spent} remaining={metrics.remaining_budget} />
+          </div>
+        </section>
+      )}
+
+      <div className="border-t border-slate-800"></div>
+
+      <section>
+        <h2 className="text-lg font-semibold text-white mb-6">Hourly Analysis</h2>
+        <div className="grid grid-cols-1 gap-8">
+          <HourlyChart title="Hourly Performance" data={analytics.hourly_performance} />
+          <HourlyHeatmap 
+            data={analytics.hourly_performance.map(h => ({ 
+              hour: h.hour, 
+              value: h.clicks, 
+              label: `${h.clicks} clicks` 
+            }))} 
+            title="24-Hour Activity Heatmap" 
           />
         </div>
       </section>
 
-      {/* Divider */}
-      <div className="border-t border-white/5"></div>
+      <div className="border-t border-slate-800"></div>
 
-      {/* Performance Comparison Section */}
       <section>
-        <h2 className="text-lg font-semibold text-white mb-4">Performance Comparison</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <ComparisonChart title="Baseline vs Optimized" data={comparisonData} />
-          <TrendChart title="Score Trend" data={scoreTrendData} dataKey="score" xAxisKey="day" />
+        <h2 className="text-lg font-semibold text-white mb-6">Advanced Analytics</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <FeatureImportanceChart title="Feature Importance" data={analytics.feature_importance} />
+          <DevicePerformance 
+            mobile={analytics.device_performance.mobile} 
+            desktop={analytics.device_performance.desktop} 
+          />
+          <AdvancedMetrics 
+            modelConfidence={87} 
+            roi={Math.round((metrics.score / metrics.total_spent) * 100)} 
+            burnRate={Math.round(metrics.total_spent / 4)} 
+            daysRemaining={Math.ceil(metrics.remaining_budget / (metrics.total_spent / 4))} 
+          />
         </div>
-      </section>
-
-      {/* Divider */}
-      <div className="border-t border-white/5"></div>
-
-      {/* Budget & Hourly Analysis Section */}
-      <section>
-        <h2 className="text-lg font-semibold text-white mb-4">Budget & Hourly Analysis</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <BudgetPieChart title="Budget Usage" spent={kpiData.spent} remaining={kpiData.budget - kpiData.spent} />
-          <HourlyChart title="Hourly Performance" data={hourlyData} />
-        </div>
-      </section>
-
-      {/* Divider */}
-      <div className="border-t border-white/5"></div>
-
-      {/* Advanced Analytics Section */}
-      <section>
-        <h2 className="text-lg font-semibold text-white mb-4">Advanced Analytics</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <FeatureImportanceChart title="Feature Importance" data={featureData} />
-          <DevicePerformance mobile={deviceData.mobile} desktop={deviceData.desktop} />
-          <AdvancedMetrics modelConfidence={87} roi={245} burnRate={2480} daysRemaining={3} />
-        </div>
-      </section>
-
-      {/* Divider */}
-      <div className="border-t border-white/5"></div>
-
-      {/* Heatmap Section */}
-      <section>
-        <h2 className="text-lg font-semibold text-white mb-4">Activity Heatmap</h2>
-        <HourlyHeatmap data={heatmapData} title="24-Hour Activity Heatmap" />
       </section>
     </div>
   );

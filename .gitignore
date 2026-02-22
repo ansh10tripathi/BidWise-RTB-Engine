@@ -1,4 +1,6 @@
-# Python
+# ======================
+# PYTHON
+# ======================
 __pycache__/
 *.pyc
 *.pyo
@@ -7,18 +9,35 @@ __pycache__/
 env/
 venv/
 
-# Model files (optional if large)
-# backend/models/*.pkl
+# ======================
+# DATASETS (IMPORTANT)
+# ======================
+backend/data/campaigns/
+backend/data/*.xlsx
+backend/data/*.xls
+backend/data/*.csv
 
-# Dataset (optional if large)
-# backend/data/*.csv
+# ======================
+# MODEL FILES (optional)
+# ======================
+backend/models/*.pkl
 
-# Node
+# ======================
+# NODE / NEXT
+# ======================
 node_modules/
+.next/
+dist/
 
-# Environment files
+# ======================
+# ENV FILES
+# ======================
 .env
+.env.local
+.env.*.local
 
+# ======================
 # OS
+# ======================
 .DS_Store
 Thumbs.db

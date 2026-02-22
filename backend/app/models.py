@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Literal
+from typing import List, Literal, Optional
 from datetime import datetime
 
 
@@ -27,6 +27,7 @@ class Campaign(BaseModel):
     active_hours: List[int]
     status: str
     created_at: datetime
+    dataset_path: Optional[str] = None
 
 class Metrics(BaseModel):
     total_impressions: int
